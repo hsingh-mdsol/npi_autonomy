@@ -1,48 +1,5 @@
-select RX_NPI, REFERRING_NPI, NDC_DRUG_TYPE, count(*) as rx_count from TBLREF_RXMX_EXT_REFERRALS
-group by RX_NPI, REFERRING_NPI, NDC_DRUG_TYPE
-order by RX_NPI;
-
-select * from TBLREF_RXMX_EXT_REFERRALS;
-
-
---get master distribution table of npis and their rx count for each ndc drug type
---get referral combinations
---join master distribution table on referral combinations table on rx'ing npi and referring npi separately!
-
-select RX_NPI as NPI, RX_SPEC as SPECIALTY from (
-  select RX_NPI, RX_SPEC from TBLREF_RXMX_EXT_REFERRALS
-  union
-  select MX_NPI, MX_SPEC from TBLREF_RXMX_EXT_REFERRALS
-  union
-  select REFERRING_NPI, REFERRING_SPEC from TBLREF_RXMX_EXT_REFERRALS
-);
-
----- every rx npi has one unique specialty
---select RX_NPI, count(distinct RX_SPEC) as num_spec from TBLREF_RXMX_EXT_REFERRALS
---group by RX_NPI
---order by 2 desc;
---
----- every mx npi has one unique specialty
---select MX_NPI, count(distinct MX_SPEC) as num_spec from TBLREF_RXMX_EXT_REFERRALS
---group by MX_NPI
---order by 2 desc;
---
----- every referring npi has one unique specialty
---select REFERRING_NPI, count(distinct REFERRING_SPEC) as num_spec from TBLREF_RXMX_EXT_REFERRALS
---group by REFERRING_NPI
---order by 2 desc;
-
---14,293,201
-select * from TBLREF_RXMX_EXT_REFERRALS
-where RX_NPI in (select distinct REFERRING_NPI from TBLREF_RXMX_EXT_REFERRALS);
-
---referral rx combinations
-select distinct RX_NPI, REFERRING_NPI from TBLREF_RXMX_EXT_REFERRALS
-where RX_NPI != REFERRING_NPI
-order by RX_NPI;
-
 --npi writing distribution
-with cte1 AS (   
+with cte1 AS (
         select RX_NPI, NDC_DRUG_TYPE, count(*) as rx_count
         from TBLREF_RXMX_EXT_REFERRALS
         group by RX_NPI, NDC_DRUG_TYPE
@@ -66,14 +23,14 @@ with cte1 AS (
     ),
      rx_hcps as(
        select distinct RX_NPI, REFERRING_NPI
-       from TBLREF_RXMX_EXT_REFERRALS 
+       from TBLREF_RXMX_EXT_REFERRALS
        where RX_NPI != REFERRING_NPI
        order by RX_NPI
     ),
      rx_hcps_distr as(
        select a.RX_NPI, a.REFERRING_NPI,
               b.NSAID as RX_NPI_NSAID,
-              b.OTHER_PAIN as RX_NPI_OTHER_PAIN, 
+              b.OTHER_PAIN as RX_NPI_OTHER_PAIN,
               b.STRONG_OPIOID as RX_NPI_STRONG_OPIOID,
               b.NEUROPATHIC as RX_NPI_NEUROPATHIC,
               b.APAP as RX_NPI_APAP,
@@ -84,7 +41,7 @@ with cte1 AS (
      rx_refer_hcps_distr as(
        select a.*,
               b.NSAID as REF_NPI_NSAID,
-              b.OTHER_PAIN as REF_NPI_OTHER_PAIN, 
+              b.OTHER_PAIN as REF_NPI_OTHER_PAIN,
               b.STRONG_OPIOID as REF_NPI_STRONG_OPIOID,
               b.NEUROPATHIC as REF_NPI_NEUROPATHIC,
               b.APAP as REF_NPI_APAP,
@@ -111,12 +68,53 @@ with cte1 AS (
        select a.*, b.SPECIALTY as REF_SPEC
        from rx_refer_hcps_distr_rxspec a
        left join specs b on a.REFERRING_NPI = b.NPI
+    ),
+    chisqr1 as(
+       select *,
+              RX_NPI_NSAID+RX_NPI_OTHER_PAIN+RX_NPI_STRONG_OPIOID+RX_NPI_NEUROPATHIC+RX_NPI_APAP+RX_NPI_WEAK_OPIOID as RX_SUM_TOT,
+              REF_NPI_NSAID+REF_NPI_OTHER_PAIN+REF_NPI_STRONG_OPIOID+REF_NPI_NEUROPATHIC+REF_NPI_APAP+REF_NPI_WEAK_OPIOID as REF_SUM_TOT,
+              RX_NPI_NSAID+REF_NPI_NSAID as NSAID_SUM_TOT,
+              RX_NPI_OTHER_PAIN+RX_NPI_OTHER_PAIN as OTHER_PAIN_SUM_TOT,
+              RX_NPI_STRONG_OPIOID+REF_NPI_STRONG_OPIOID as STRONG_OPIOID_SUM_TOT,
+              RX_NPI_NEUROPATHIC+REF_NPI_NEUROPATHIC as NEUROPATHIC_SUM_TOT,
+              RX_NPI_APAP+REF_NPI_APAP as APAP_SUM_TOT,
+              RX_NPI_WEAK_OPIOID+REF_NPI_WEAK_OPIOID as WEAK_OPIOID_SUM_TOT
+       from rx_refer_hcps_distr_rx_ref_spec
+    ),
+    chisqr2 as(
+       select *,
+              DIV0((NSAID_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e1,
+              DIV0((OTHER_PAIN_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e2,
+              DIV0((STRONG_OPIOID_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e3,
+              DIV0((NEUROPATHIC_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e4,
+              DIV0((APAP_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e5,
+              DIV0((WEAK_OPIOID_SUM_TOT*RX_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e6,
+              DIV0((NSAID_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e7,
+              DIV0((OTHER_PAIN_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e8,
+              DIV0((STRONG_OPIOID_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e9,
+              DIV0((NEUROPATHIC_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e10,
+              DIV0((APAP_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e11,
+              DIV0((WEAK_OPIOID_SUM_TOT*REF_SUM_TOT),(RX_SUM_TOT+REF_SUM_TOT)) as e12
+       from chisqr1
+    ),
+    chisqr3 as(
+       select *,
+              DIV0(POWER(RX_NPI_NSAID-e1,2),e1)+DIV0(POWER(RX_NPI_OTHER_PAIN-e2,2),e2)+DIV0(POWER(RX_NPI_STRONG_OPIOID-e3,2),e3)+
+              DIV0(POWER(RX_NPI_NEUROPATHIC-e4,2),e4)+DIV0(POWER(RX_NPI_APAP-e5,2),e5)+DIV0(POWER(RX_NPI_WEAK_OPIOID-e6,2),e6)+
+              DIV0(POWER(REF_NPI_NSAID-e7,2),e7)+DIV0(POWER(REF_NPI_OTHER_PAIN-e8,2),e8)+DIV0(POWER(REF_NPI_STRONG_OPIOID-e9,2),e9)+
+              DIV0(POWER(REF_NPI_NEUROPATHIC-e10,2),e10)+DIV0(POWER(REF_NPI_APAP-e11,2),e11)+DIV0(POWER(REF_NPI_WEAK_OPIOID-e12,2),e12) as chisqr
+       from chisqr2
+    ),
+    results as(
+       select RX_NPI,
+              AVG(chisqr) as avg_chisqr,
+              count(*) as num_refs
+       from chisqr3
+       where RX_SPEC in ('Nurse Practitioner','Physician Assistant')
+       group by RX_NPI
     )
 --this is the final table for analysis
---the population here is all HCPS from TBLREF_RXMX_EXT_REFERRALS table 
+--the population here is all HCPS from TBLREF_RXMX_EXT_REFERRALS table
 --their writing behavior was also taken from the same table
-select * from rx_refer_hcps_distr_rx_ref_spec;
-       
-
-
-
+--there are some nulls here which should be removed
+select AVG(AVG_CHISQR) from results;
