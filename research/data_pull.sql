@@ -105,16 +105,50 @@ with cte1 AS (
               DIV0(POWER(REF_NPI_NEUROPATHIC-e10,2),e10)+DIV0(POWER(REF_NPI_APAP-e11,2),e11)+DIV0(POWER(REF_NPI_WEAK_OPIOID-e12,2),e12) as chisqr
        from chisqr2
     ),
-    results as(
+    results_spec as(
+       select RX_SPEC, RX_NPI,
+              AVG(chisqr) as avg_chisqr,
+              count(*) as num_refs
+       from chisqr3
+       --where RX_SPEC in ('Nurse Practitioner','Physician Assistant','Emergency Medicine','Family Medicine','Internal Medicine','Orthopaedic Surgery','Surgery')
+       group by RX_SPEC, RX_NPI
+       order by RX_SPEC
+    ),
+    results_rx_npi as(
        select RX_NPI,
               AVG(chisqr) as avg_chisqr,
               count(*) as num_refs
        from chisqr3
-       where RX_SPEC in ('Nurse Practitioner','Physician Assistant')
        group by RX_NPI
+    ),
+    results_ref_npi as(
+       select REFERRING_NPI,
+              AVG(chisqr) as avg_chisqr,
+              count(*) as num_refs
+       from chisqr3
+       group by REFERRING_NPI
     )
+
+
 --this is the final table for analysis
 --the population here is all HCPS from TBLREF_RXMX_EXT_REFERRALS table
 --their writing behavior was also taken from the same table
 --there are some nulls here which should be removed
-select AVG(AVG_CHISQR) from results;
+--df = (6-1)*(6-1) = 25
+--alpha = 0.05
+--critical value = 37.652
+
+--select RX_SPEC,
+--       AVG(AVG_CHISQR) as avg_avg_chisqr
+--from results_spec
+--group by RX_SPEC
+--order by 2 desc;
+
+--lets also view by npi level autonomy instead of just specialty at rx npi and referral npi
+--select * from results_rx_npi
+--where avg_chisqr is not NULL
+--order by avg_chisqr desc;
+
+select * from results_ref_npi
+where avg_chisqr is not NULL
+order by avg_chisqr desc;
