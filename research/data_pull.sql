@@ -105,11 +105,17 @@ with cte1 AS (
               DIV0(POWER(REF_NPI_NEUROPATHIC-e10,2),e10)+DIV0(POWER(REF_NPI_APAP-e11,2),e11)+DIV0(POWER(REF_NPI_WEAK_OPIOID-e12,2),e12) as chisqr
        from chisqr2
     ),
+    chisqr4 as(
+       select *,
+              case when e1<1 or e2<1 or e3<1 or e4<1 or e5<1 or e6<1 or e7<1 or e8<1 or e9<1 or e10<1 or e11<1 or e12<1
+              then 1 else 0 end as chisqr_violated
+       from chisqr3
+    ),
     results_spec as(
        select RX_SPEC, RX_NPI,
               AVG(chisqr) as avg_chisqr,
               count(*) as num_refs
-       from chisqr3
+       from chisqr4
        --where RX_SPEC in ('Nurse Practitioner','Physician Assistant','Emergency Medicine','Family Medicine','Internal Medicine','Orthopaedic Surgery','Surgery')
        group by RX_SPEC, RX_NPI
        order by RX_SPEC
@@ -118,14 +124,14 @@ with cte1 AS (
        select RX_NPI,
               AVG(chisqr) as avg_chisqr,
               count(*) as num_refs
-       from chisqr3
+       from chisqr4
        group by RX_NPI
     ),
     results_ref_npi as(
        select REFERRING_NPI,
               AVG(chisqr) as avg_chisqr,
               count(*) as num_refs
-       from chisqr3
+       from chisqr4
        group by REFERRING_NPI
     )
 
@@ -138,17 +144,50 @@ with cte1 AS (
 --alpha = 0.05
 --critical value = 37.652
 
+--by avg_avg_chisqr by specialty
 --select RX_SPEC,
---       AVG(AVG_CHISQR) as avg_avg_chisqr
+--       AVG(AVG_CHISQR) as avg_avg_chisqr,
+--       sum(num_refs) as num_refs
 --from results_spec
 --group by RX_SPEC
+--having AVG(AVG_CHISQR) is not NULL
 --order by 2 desc;
 
---lets also view by npi level autonomy instead of just specialty at rx npi and referral npi
+--rx npi level of autonomy
 --select * from results_rx_npi
 --where avg_chisqr is not NULL
 --order by avg_chisqr desc;
 
-select * from results_ref_npi
-where avg_chisqr is not NULL
-order by avg_chisqr desc;
+--referring npi level of autonomy
+--no one listens to 1760624787 but people listen to 1073669297
+--select * from results_ref_npi
+--where avg_chisqr is not NULL
+--order by num_refs desc;
+
+--select RX_SPEC,
+--       AVG(CHISQR) as avg_chisqr,
+--       count(*) as num_refs
+--from chisqr3
+--where referring_npi = '1760624787'
+--group by RX_SPEC
+--order by 2 desc;
+
+--select RX_SPEC,
+--       AVG(CHISQR) as avg_chisqr,
+--       count(*) as num_refs
+--from chisqr3
+--where referring_npi = '1073669297'
+--group by RX_SPEC
+--order by 2 desc;
+
+select * from chisqr4
+where CHISQR_VIOLATED = 0;
+
+--problems with all this
+--sample size is too small for most groups
+--groups are probably not independent since referrals could impact rx's which is what we are trying to test
+
+--might want to consider a multinomial logistic regression where DV is category and features are flags for referral npi same category prescribed, rx specialty and referral specialty
+--could add interaction terms here too on specialty to see if npi referring has impact on rxing npi within specialties
+
+
